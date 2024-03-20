@@ -77,6 +77,22 @@ ref2l %>% ggplot(aes(x = measure, y = value)) + geom_boxplot(outlier.shape = NA,
   ggtitle('Reflux measures') +
   scale_fill_brewer(palette = 'Set2')
 
+# PCA of clinical data
+library(factoextra)
+
+rownames(clin) <- clin$PatID
+clin1 <- clin %>% 
+  select(BaselineFEV1pp, IVCourses12months, IV.Days.12months) %>%
+  drop_na()
+
+pcac <- prcomp(clin1, scale = TRUE)
+
+eigc <- get_eigenvalue(pcac)
+scoresc <- pcac$x
+
+autoplot(pcac, loadings = TRUE, loadings.label = TRUE) +
+  geom_text_repel(aes(label = rownames(clin1)), size = 3)
+
 ###############################  
 
 # Exploratory analysis of reflux data
@@ -382,6 +398,12 @@ p0$layers[[3]]$data<-p0$layers[[3]]$data["P00450",]
 
 p0
 
+
+# difference according to reflux groups
+as.data.frame(assayT) %>% mutate(PatID = rownames(assayT)) %>%
+  left_join(ref4 %>% dplyr::select(PatID, RefGroup)) %>%
+  ggplot(aes(x = RefGroup, y = A0A0C4DH38)) + geom_boxplot()
+
 #############################
 
 # correlation of reflux and protein PCs 
@@ -431,6 +453,80 @@ ggsave('PCAProtRef.tiff', ap, dpi = 300, width = 220, height = 90, unit = 'mm')
 #############################
 
 
+# Integration of clinical and reflux data (PLS canonical)
+
+clin3 <- clin %>% 
+  select(BaselineFEV1pp, IVCourses12months, IV.Days.12months)
+
+rownames(ref) <- ref$PatID
+ref3 <- ref[-1,-1]
+
+pls.cr <- pls(X = ref3, Y = clin3, ncomp = 2, scale = TRUE, mode = 'canonical')
+pls.cr2 <- pls(X = ref3, Y = clin3, ncomp = 2, scale = TRUE, mode = 'regression')
+
+plotVar(pls.cr, cutoff = 0.7)
+
+vip.pls.cr <- vip(pls.cr)
+
+plot(x = ref3$Total.events, y = clin3$IVCourses12months)
+text(x = ref3$Total.events, y = clin3$IVCourses12months, labels = rownames(ref3), 
+     cex = 0.7, pos = 1)
+
+plot(x = ref3$Total.events, y = clin3$IV.Days.12months)#, xlim = c(0, 200))
+text(x = ref3$Total.events, y = clin3$IV.Days.12months, labels = rownames(ref3), 
+     cex = 0.7, pos = 1)
+
+plot(x = ref3$Demeester.score, y = clin3$BaselineFEV1pp)
+
+
+plotIndiv(pls.cr)
+biplot(pls.cr, block = 'X')
+
+cor(clin3$IV.Days.12months[-c(37, 40)], ref3$Total.events[-c(37, 40)])
+
+plotArrow(pls.cr)
+
+join <- cbind(clin3, ref3)
+
+hist(join$IV.Days.12months)
+hist(join$Total.events)
+
+join <- join %>% mutate(IVDays1 = ifelse(IV.Days.12months == 0, 0.01, IV.Days.12months))
+
+join$IV.Days.12months <- as.numeric(join$IV.Days.12months)
+
+join <- join %>% mutate(PatID = rownames(join))
+
+clin2 <- clin2 %>% mutate(PatID = ifelse(
+  Patient.ID %in% (1:9), paste('CF00', Patient.ID, sep =''),
+  paste('CF0', Patient.ID, sep ='')))
+clin2$CFTR.Rx[38] <- 'No'
+
+join <- join %>% full_join(clin2 %>% dplyr::select(PatID, Age, Sex, CFTR.Rx, Gene1, Gene2, BMI))
+join$CFTR.Rx[38] <- 'No'
+
+n_distinct(join$Gene1)
+
+# remove reflux outlier
+r1 <- glm(IVDays1 ~ Total.events,
+          data = join,
+          family = Gamma(link = 'identity'))
+
+summary(r1)
+
+r <- glm(IVDays1 ~ Total.events + Age + Sex + BMI + CFTR.Rx + Gene1,
+         data = join,
+         family = Gamma(link = 'identity'))
+
+summary(r)
+
+
+
+r2 <- glm(IVDays1 ~ Total.events + Age + Sex + BMI + CFTR.Rx,
+         data = join,
+         family = Gamma(link = 'identity'))
+
+summary(r2)
 
 # Sparse canonical correlation analysis
 library(PMA)
@@ -974,17 +1070,24 @@ mic <- drop_na(mic) %>% filter(Cohort == 'CF')
 # diversity measures and descriptions
 div <- mic[,c(1:3, 229:240)]
 
-# relative abundances of bacterial phyla
+# relative abundances of bacterial geni
 mic1 <- mic[,c(1:228)]
 
+# remove taxa with 0 observations
 table(colSums(mic1[4:228]) == 0)
+
+mic1f <- as.data.frame(t(mic1[4:228])) %>% filter(rowSums(.) > 0) %>%
+  t() %>% as.data.frame() 
+
+rownames(mic1f) <- mic1$PatID 
 
 # relative abundances of bacterial phyla (higher tax level?)
 mic2 <- mic[,c(1:3, 241:ncol(mic))]
 
-library(vegan)
-colnames(mic2)
+# centered log ratio transformation of compositional data
+mic1ft <- logratio.transfo(mic1f, logratio = 'CLR', offset = 1)
 
+# principal component analysis
 pca <- rda(mic1[,c(4:ncol(mic1))], scale = FALSE)
 biplot(pca, scaling = 'symmetric')
 
