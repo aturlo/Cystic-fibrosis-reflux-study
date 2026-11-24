@@ -2,7 +2,7 @@
 
 # author: Aggie Turlo
 # project: Cystic fibrosis reflux study
-# date: 24/11/2026
+# date: 05/05/2026
 
 #####################
 
@@ -188,14 +188,6 @@ scores2 <- scores1 %>% mutate(PatID = rownames(.)) %>%
 write.csv(scores2, 'Proteome_PCA_scores.csv')
 # to be included as Supplemental File 1
 
-# test correlation between PC scores and proximal reflux events
-scores2_ref <- scores2 %>% left_join(ref2)
-
-cor.test(scores2_ref$PC1, scores2_ref$Proximal.total)
-cor.test(scores2_ref$PC2, scores2_ref$Proximal.total)
-cor.test(scores2_ref$PC3, scores2_ref$Proximal.total)
-cor.test(scores2_ref$PC4, scores2_ref$Proximal.total)
-
 # export loadings
 loadings1 <- as.data.frame(pca1$rotation)
 loadings2 <- loadings1 %>% mutate(Accession = rownames(.)) %>%
@@ -208,36 +200,6 @@ loadings2 <- loadings1 %>% mutate(Accession = rownames(.)) %>%
 
 write.csv(loadings2, 'Proteome_PCA_loadings.csv')
 # to be included as Supplemental File 1
-
-# test correlation between PC3 and PC2 loadings and proximal reflux events
-assayT_ref <- as.data.frame(assayT) %>% 
-  mutate(PatID = rownames(.)) %>% 
-  left_join(ref2 %>% dplyr::select(PatID, Proximal.total)) %>%
-  dplyr::select(!PatID)
-
-cor_m <- cor(assayT_ref, use = 'pairwise.complete.obs') %>%
-  as.data.frame() %>%
-  dplyr::select(Proximal.total) %>%
-  mutate(Accession = rownames(.)) %>%
-  dplyr::filter(!Accession == 'Proximal.total') %>% 
-  rename(r = Proximal.total)
-
-cor_p <- cor_pmat(assayT_ref, use = 'pairwise.complete.obs') %>%
-  as.data.frame() %>%
-  dplyr::select(Proximal.total) %>%
-  rename(p = Proximal.total) %>%
-  mutate(Accession = rownames(.),
-         adj.p = p.adjust(p, method = 'BH')) %>%
-  dplyr::filter(!Accession == 'Proximal.total') 
-
-cor_prot <- cor_m %>% full_join(cor_p) %>%
-  full_join(loadings2 %>% dplyr::select(Accession, Description, Gene, PC2, PC3))
-
-cor_prot %>% dplyr::filter(abs(r) > 0.5) 
-min(cor_prot$r)
-max(cor_prot$r)
-
-write.csv(cor_prot, 'Correlation_reflux_proteome_PCA_loadings.csv')
 
 # export variance explaines
 eigen1 <- get_eigenvalue(pca1)
