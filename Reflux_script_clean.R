@@ -30,8 +30,10 @@ setwd("~/Cystic_fibrosis_R_Lord")
 ref <- read.csv('Select reflux 01-08-2023.csv')
 prot <- read.csv('Progenesis_CF_HV_unique_proteins.csv')
 mic1 <- read.csv('GORCF_MAR_2024_Raw_Count.csv')
+micDiv <- read.csv('GORCF_MAR_2024_Counts_Multiomics_w_Diversity.csv')
 clin <- read.csv('GOR_ClinicalEndpoint.csv')
 clin1 <- read.csv('GOR-CF database 07-03-2024.csv')
+
 
 #
 
@@ -947,6 +949,30 @@ clust_boxplots
 wilcox.test(Proximal.total.events ~ as.factor(cluster), data = clustM1)
 wilcox.test(BaselineFEV1pp ~ as.factor(cluster), data = clustM1)
 wilcox.test(IV.Days.12months ~ as.factor(cluster), data = clustM1)
+
+median(clustM1[clustM1$cluster == '1',]$Proximal.total.events) -
+  median(clustM1[clustM1$cluster == '2',]$Proximal.total.events)
+
+median(clustM1[clustM1$cluster == '1',]$BaselineFEV1pp, na.rm = TRUE) -
+  median(clustM1[clustM1$cluster == '2',]$BaselineFEV1pp, na.rm = TRUE)
+
+median(clustM1[clustM1$cluster == '1',]$IV.Days.12months, na.rm = TRUE) -
+  median(clustM1[clustM1$cluster == '2',]$IV.Days.12months, na.rm = TRUE)
+
+# compare alpha-diversity measures
+colnames(micDiv)[1] <- 'OTU_ID'
+micDiv <- micDiv %>% left_join(mic1 %>% dplyr::select(OTU_ID, PatID, Sample_Type))
+micDiv <- micDiv %>% filter(Sample_Type == 'Sputum') %>%
+  left_join(clustM1 %>% dplyr::select(PatID, cluster))
+
+wilcox.test(Shannon_H ~ as.factor(cluster), data = micDiv)
+wilcox.test(Dominance_D ~ as.factor(cluster), data = micDiv)
+
+median(micDiv[micDiv$cluster == '1',]$Shannon_H, na.rm = TRUE) -
+  median(micDiv[micDiv$cluster == '2',]$Shannon_H, na.rm = TRUE)
+
+median(micDiv[micDiv$cluster == '1',]$Dominance_D, na.rm = TRUE) -
+  median(micDiv[micDiv$cluster == '2',]$Dominance_D, na.rm = TRUE)
 
 # Assemble Supplementary Figure 2
 pdf('Figure_S2_v03.pdf', width = 7, height = 5)
