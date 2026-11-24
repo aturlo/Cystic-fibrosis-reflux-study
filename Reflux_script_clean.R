@@ -589,7 +589,9 @@ Scores$ptile_var <- ecdf(Scores$Proximal.total.events)(Scores$Proximal.total.eve
 pls_plot <- Scores %>% ggplot(aes(x = comp1, y = comp2)) + 
   geom_point(size = 1.5, pch = 21, aes(fill = ptile_var)) + 
   theme_bw(base_size = 9) +
-  facet_wrap(~ block, scales = 'free', ncol = 1) +
+  facet_wrap(~ factor(block, 
+                      levels = c('Proteome','Microbiome')), 
+             scales = 'free', ncol = 1) +
   labs(title = 'Block PLS scores plots') +
   theme(plot.title = element_text(hjust = 0.5)) +
   scale_fill_gradient2(low = '#0000FFFF',
@@ -642,7 +644,9 @@ Loadings_C1 <- rbind(Mloadings %>%
 
 pc1_plot <- Loadings_C1 %>%
   ggplot(aes(x = fct_inorder(var), y = comp1)) + 
-  facet_wrap(~ block, scales = 'free', ncol = 1) +
+  facet_wrap(~ factor(block,
+                      levels = c('Proteome','Microbiome')),
+             scales = 'free', ncol = 1) +
   theme_bw(base_size = 9) +
   geom_col(width = 0.8) + coord_flip() + 
   theme_bw() + theme(axis.title.y = element_blank(),
@@ -658,7 +662,7 @@ pc1_plot
 #
 
 # Assemble Figure 3
-pdf('Figure_3_v02.pdf', width = 7, height = 4.5)
+pdf('Figure_3_v03.pdf', width = 7, height = 4.5)
 ggdraw() +
   draw_plot(pls_plot, x = 0.03, y = 0, width = 0.35, height = 0.93) +
   draw_plot(pc1_plot, x = 0.43, y = 0.14, width = 0.52, height = 0.8) +
