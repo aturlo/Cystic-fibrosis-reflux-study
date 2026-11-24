@@ -22,6 +22,7 @@ library(plotrix)
 library(pheatmap)
 library(MatrixCorrelation)
 library(dendextend)
+library(cluster)
 
 setwd("~/Cystic_fibrosis_R_Lord")
 
@@ -709,21 +710,45 @@ corCf <- corCf %>%
 
 corCf$names[24] <- 'k__Bacteria.p__Firmicutes.c__Bacilli.o__Lactobacillales.f__Streptococcaceae.g__'
 
+table(corCf$Block)
+
+# keep only protein variables
+corCf <- corCf[corCf$Block == 'prot',]
+
 # heatmap of z-score between variables and the outcome (reflux)
+# use all samples with available protein data
+conc <- assayT
+
+# use only sample with matching protein and microbiome data
 conc <- cbind(protr, mictr)
+
+# 
 concf <- conc[,c(corCf$names)]
 concfs <- as.data.frame(scale(concf, center = TRUE, scale = TRUE))
 colnames(concfs) <- corCf$Gene
-concfs <- concfs[match(rownames(as.data.frame(Y) %>% arrange(Proximal.total.events)), rownames(concfs)),]
-colnames(concfs)[24] <- 'f.Streptococcaceae'
 
+# if including microbiome variable
+concfs <- concfs[match(rownames(as.data.frame(Y) %>% 
+                                  arrange(Proximal.total.events)), 
+                       rownames(concfs)),]
+colnames(concfs)[24] <- 'f.Streptococcaceae' 
+
+#
 rows <- data.frame(names = colnames(concf)) %>% 
   left_join(corCf %>% dplyr::select(names, Block, Gene, CorRef))
 rownames(rows) <- rows$Gene
 rows <- rows %>% dplyr::select(CorRef)
-rownames(rows)[24] <- 'f.Streptococcaceae'
+rownames(rows)[24] <- 'f.Streptococcaceae' # if including microbiome variable
 
-annot <- data.frame(PatID = rownames(protr)) %>% left_join(ref1 %>% dplyr::select(PatID, Proximal.total.events))
+# if using only protein variables
+annot <- data.frame(PatID = rownames(assayT)) %>% 
+  left_join(ref1 %>% dplyr::select(PatID, Proximal.total.events))
+
+# if using protein and microbial variables
+annot <- data.frame(PatID = rownames(protr)) %>% 
+  left_join(ref1 %>% dplyr::select(PatID, Proximal.total.events))
+
+#
 rownames(annot) <- annot$PatID
 annot <- annot %>% arrange(Proximal.total.events)
 annot$ecdf <- 1:length(annot$Proximal.total.events)/length(annot$Proximal.total.events)
@@ -741,13 +766,17 @@ leg <- data.frame(labels, testcol, x = 1, y = 1:5)
 leg$labels <- as.factor(leg$labels)
 
 concfsP <- concfs[,-24]  
+
+# run code below if includign microbial variable
 concfsM <- as.data.frame(concfs[,24])
 rownames(concfsM) <- rownames(concfs)
 colnames(concfsM) <- 'f.Streptococcaceae'
 
+#
 breaksList = seq(-3.7, 3.1, by = 0.1)
 
-Bpls_hm <- pheatmap(t(concfs), annotation_col = annot %>% dplyr::select(ecdf),
+Bpls_hm <- pheatmap(t(concfs), 
+                    annotation_col = annot %>% dplyr::select(ecdf),
                     clustering_method = 'ward.D2',
                     cluster_cols = T, 
                     annotation_row = rows, cluster_rows = T,
@@ -771,7 +800,8 @@ Bpls_hm1 <- as_grob(Bpls_hm$gtable)
 #
 
 # create figure legend
-legGrob <- leg %>% ggplot(aes(x = fct_inorder(as.factor(labels)), y = x, fill = labels)) + 
+legGrob <- leg %>% 
+  ggplot(aes(x = fct_inorder(as.factor(labels)), y = x, fill = labels)) + 
   geom_tile() +
   scale_fill_manual(values = testcol, breaks = labels) +
   theme_classic(base_size = 8) +
@@ -808,7 +838,7 @@ legGrob2 <- data.frame(group = 1, Corr = c('Pos', 'Neg')) %>%
 
 
 # Assemble Figure 4
-pdf(file = 'Figure_4_v02.pdf', width = 7, height = 5)
+pdf(file = 'Figure_4_v03.pdf', width = 7, height = 5)
 ggdraw() +  
   draw_plot(Bpls_hm1, x = 0.15, y = 0.04, width = 0.8, height = 0.8) +
   draw_plot(legGrob, x = 0.76, y = 0.82, width = 0.18, height = 0.11) +
@@ -846,6 +876,7 @@ write.csv(bguniprot, 'BGUniprot.csv') # export for use in GOnet
 #
 
 # repeat hierarchical clustering of variable most associated with reflux
+# using only protein variables and all samples
 distC <- vegdist(concfs, method = 'euclidean')
 clustC <- hclust(distC, method = 'ward.D2')
 
@@ -858,6 +889,25 @@ get_leaves_nodePar(dend)[[1]]
 dend <- color_branches(dend, k = 2, col = brewer.pal(n = 2, name = 'Set2'))
 plot(dend, main = 'Hierarchical clustering of sputum samples', cex.main = 0.8)
 dend1 <- recordPlot()
+
+# choose optimal number of clusters
+heights <- rev(clustC$height)  # reverse so index = number of clusters
+plot(1:20, heights[1:20],
+     type = "b", pch = 19,
+     xlab = "Number of clusters (k)",
+     ylab = "Merge height",
+     main = "Elbow Plot")
+
+# silhouette score
+sil_scores <- sapply(2:10, function(K) { # cluster number range to test
+  labels <- cutree(clustC, k = K)
+  mean(silhouette(labels, dist(concfs))[, 'sil_width'])
+})
+
+plot(2:10, sil_scores, type = "b", pch = 19,
+     xlab = "Number of clusters (k)",
+     ylab = "Mean silhouette score",
+     main = "Silhouette Analysis")
 
 # cut the tree and assign cluster membership
 clustm <- cutree(clustC, h = 15)
@@ -893,13 +943,18 @@ clust_boxplots <- clustM1l %>%
 
 clust_boxplots
 
+# test for difference in clinical variables between clusters
+wilcox.test(Proximal.total.events ~ as.factor(cluster), data = clustM1)
+wilcox.test(BaselineFEV1pp ~ as.factor(cluster), data = clustM1)
+wilcox.test(IV.Days.12months ~ as.factor(cluster), data = clustM1)
+
 # Assemble Supplementary Figure 2
-pdf('Figure_S2_v02.pdf', width = 7, height = 5)
+pdf('Figure_S2_v03.pdf', width = 7, height = 5)
 ggdraw() + 
   draw_plot(dend1, x = 0, y = 0.2, width = 0.6, height = 0.7) +
   draw_plot(clust_boxplots, x = 0.53, y = 0.1, width = 0.23, height = 0.8) +
   draw_plot_label(label = c('A', 'B'), x = c(0, 0.5), y = c(0.95, 0.95)) +
-  draw_plot_label(label = '*', x = 0.608, y = 0.8)
+  draw_plot_label(label = '*', x = 0.608, y = 0.85)
 dev.off()  
 
 
